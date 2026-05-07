@@ -374,3 +374,50 @@ def split_tuple_types(s: str) -> list[str]:
             part = "".join(buf).strip()
             if part:
                 out.append(part)
+            buf = []
+            continue
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth < 0:
+                raise CaMMaError("tuple type parse underflow")
+        buf.append(ch)
+    part = "".join(buf).strip()
+    if part:
+        out.append(part)
+    if depth != 0:
+        raise CaMMaError("tuple type parse mismatch")
+    return out
+
+
+def abi_encode_single(typ: str, val: t.Any) -> bytes:
+    typ = typ.strip()
+    if typ == "address":
+        return _abi_encode_address(str(val))
+    if typ == "bool":
+        return _abi_encode_bool(bool(val))
+    if typ.startswith("uint"):
+        bits = int(typ[4:] or "256")
+        return _int_to_abi(int(val), bits, False)
+    if typ.startswith("int"):
+        bits = int(typ[3:] or "256")
+        return _int_to_abi(int(val), bits, True)
+    if typ.startswith("bytes") and typ != "bytes":
+        size = int(typ[5:])
+        b = val if isinstance(val, (bytes, bytearray)) else bytes.fromhex(strip_0x(str(val)))
+        return _abi_encode_bytes_fixed(bytes(b), size)
+    if typ == "bytes":
+        b2 = val if isinstance(val, (bytes, bytearray)) else bytes.fromhex(strip_0x(str(val)))
+        return _abi_encode_bytes_dynamic(bytes(b2))
+    if typ == "string":
+        return _abi_encode_string(str(val))
+    if typ.endswith("]"):
+        m = re.fullmatch(r"(.+)\[(\d*)\]", typ)
+        if not m:
+            raise CaMMaError(f"bad array type: {typ}")
+        inner = m.group(1).strip()
+        n = m.group(2)
+        arr = list(val) if isinstance(val, (list, tuple)) else []
+        if n != "":
+            nn = int(n)
