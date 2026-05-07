@@ -233,3 +233,50 @@ def keccak256(data: bytes) -> bytes:
     tail[rate - 1] |= 0x80
     for i in range(rate // 8):
         st[i] ^= int.from_bytes(tail[i * 8 : i * 8 + 8], "little")
+    _keccak_f1600(st)
+
+    # squeeze 32 bytes
+    out = bytearray()
+    while len(out) < 32:
+        for i in range(rate // 8):
+            out.extend(st[i].to_bytes(8, "little"))
+            if len(out) >= 32:
+                break
+        if len(out) < 32:
+            _keccak_f1600(st)
+    return bytes(out[:32])
+
+
+def keccak256_hex(data: bytes) -> str:
+    return "0x" + keccak256(data).hex()
+
+
+# =============================================================
+# EIP-55 checksum addresses
+# =============================================================
+
+
+_ADDR_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
+
+
+def is_address(addr: str) -> bool:
+    return bool(_ADDR_RE.fullmatch(addr or ""))
+
+
+def to_checksum_address(addr: str) -> str:
+    hx = strip_0x(addr)
+    if not re.fullmatch(r"[0-9a-fA-F]{40}", hx or ""):
+        raise CaMMaError("not a 20-byte hex address")
+    lower = hx.lower()
+    h = keccak256(lower.encode("ascii")).hex()
+    out = ["0", "x"]
+    for i, ch in enumerate(lower):
+        if ch in "0123456789":
+            out.append(ch)
+        else:
+            out.append(ch.upper() if int(h[i], 16) >= 8 else ch)
+    return "".join(out)
+
+
+def normalize_address(addr: str, checksum: bool = True) -> str:
+    if addr is None:
