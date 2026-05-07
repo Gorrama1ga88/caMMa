@@ -280,3 +280,50 @@ def to_checksum_address(addr: str) -> str:
 
 def normalize_address(addr: str, checksum: bool = True) -> str:
     if addr is None:
+        raise CaMMaError("address is None")
+    a = addr.strip()
+    if not a.lower().startswith("0x"):
+        a = "0x" + a
+    if not re.fullmatch(r"0x[0-9a-fA-F]{40}", a):
+        raise CaMMaError("invalid address format")
+    return to_checksum_address(a) if checksum else ("0x" + strip_0x(a).lower())
+
+
+# =============================================================
+# ABI encoding/decoding (subset: address, bool, uint<M>, int<M>, bytes<M>, bytes, string, arrays, tuples)
+# =============================================================
+
+
+def _pad32(b: bytes) -> bytes:
+    if len(b) > 32:
+        raise CaMMaError("value exceeds 32 bytes")
+    return b.rjust(32, b"\x00")
+
+
+def _zpad_to_32(b: bytes) -> bytes:
+    if len(b) % 32 == 0:
+        return b
+    return b + (b"\x00" * (32 - (len(b) % 32)))
+
+
+def _int_to_abi(n: int, bits: int, signed: bool) -> bytes:
+    if bits % 8 != 0 or bits < 8 or bits > 256:
+        raise CaMMaError("invalid int size")
+    if signed:
+        minv = -(1 << (bits - 1))
+        maxv = (1 << (bits - 1)) - 1
+        if n < minv or n > maxv:
+            raise CaMMaError("signed int out of range")
+        if n < 0:
+            n = (1 << bits) + n
+    else:
+        if n < 0 or n >= (1 << bits):
+            raise CaMMaError("uint out of range")
+    return n.to_bytes(32, "big")
+
+
+def _abi_encode_address(addr: str) -> bytes:
+    a = normalize_address(addr, checksum=False)
+    return _pad32(bytes.fromhex(strip_0x(a)))
+
+
