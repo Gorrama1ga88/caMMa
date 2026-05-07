@@ -92,3 +92,50 @@ def add_0x(s: str) -> str:
     s = (s or "").strip()
     if s.lower().startswith("0x"):
         return "0x" + s[2:]
+    return "0x" + s
+
+
+def to_int_auto(s: str) -> int:
+    s = s.strip()
+    if s.lower().startswith("0x"):
+        return int(s, 16)
+    return int(s, 10)
+
+
+def to_hex_int(n: int) -> str:
+    if n < 0:
+        raise CaMMaError("negative integers cannot be encoded to hex")
+    return hex(n)
+
+
+def human_bytes(n: int) -> str:
+    units = ["B", "KB", "MB", "GB", "TB", "PB"]
+    x = float(n)
+    i = 0
+    while x >= 1024.0 and i < len(units) - 1:
+        x /= 1024.0
+        i += 1
+    if i == 0:
+        return f"{int(x)} {units[i]}"
+    return f"{x:.2f} {units[i]}"
+
+
+def short_id(prefix: str = "cam") -> str:
+    return f"{prefix}-{uuid.uuid4().hex[:14]}"
+
+
+def wrap(s: str, width: int = 92) -> str:
+    return "\n".join(textwrap.wrap(s, width=width, replace_whitespace=False))
+
+
+def jitter_ms(ms: int, spread: int = 55) -> None:
+    r = random.randint(-spread, spread)
+    time.sleep(max(0.0, (ms + r) / 1000.0))
+
+
+# =============================================================
+# Pure Python Keccak-256 (Ethereum) implementation
+# - This is a compact, self-contained variant intended for tooling.
+# - It supports only the fixed-rate keccak256 use case.
+# =============================================================
+
