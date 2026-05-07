@@ -186,3 +186,50 @@ def _rotl64(x: int, n: int) -> int:
     return ((x << n) | (x >> (64 - n))) & 0xFFFFFFFFFFFFFFFF
 
 
+def _keccak_f1600(state: list[int]) -> None:
+    # state is 25 lanes of 64-bit ints
+    for rnd in range(_KECCAK_ROUNDS):
+        # θ
+        c = [state[x] ^ state[x + 5] ^ state[x + 10] ^ state[x + 15] ^ state[x + 20] for x in range(5)]
+        d = [c[(x - 1) % 5] ^ _rotl64(c[(x + 1) % 5], 1) for x in range(5)]
+        for x in range(5):
+            for y in range(5):
+                state[x + 5 * y] ^= d[x]
+
+        # ρ and π
+        b = [0] * 25
+        for x in range(5):
+            for y in range(5):
+                b[y + 5 * ((2 * x + 3 * y) % 5)] = _rotl64(state[x + 5 * y], _KECCAK_RHO[y][x])
+
+        # χ
+        for y in range(5):
+            row = [b[x + 5 * y] for x in range(5)]
+            for x in range(5):
+                state[x + 5 * y] = row[x] ^ ((~row[(x + 1) % 5]) & row[(x + 2) % 5])
+
+        # ι
+        state[0] ^= _KECCAK_RC[rnd]
+
+
+def keccak256(data: bytes) -> bytes:
+    # absorb
+    st = [0] * 25
+    rate = _KECCAK_RATE_BYTES
+    off = 0
+    n = len(data)
+    while off + rate <= n:
+        block = data[off : off + rate]
+        for i in range(rate // 8):
+            st[i] ^= int.from_bytes(block[i * 8 : i * 8 + 8], "little")
+        _keccak_f1600(st)
+        off += rate
+
+    # pad
+    tail = bytearray(data[off:])
+    tail.append(0x01)  # keccak padding
+    while len(tail) < rate:
+        tail.append(0x00)
+    tail[rate - 1] |= 0x80
+    for i in range(rate // 8):
+        st[i] ^= int.from_bytes(tail[i * 8 : i * 8 + 8], "little")
