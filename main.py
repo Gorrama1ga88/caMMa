@@ -327,3 +327,50 @@ def _abi_encode_address(addr: str) -> bytes:
     return _pad32(bytes.fromhex(strip_0x(a)))
 
 
+def _abi_encode_bool(v: bool) -> bytes:
+    return _pad32(b"\x01" if v else b"\x00")
+
+
+def _abi_encode_bytes_fixed(b: bytes, size: int) -> bytes:
+    if len(b) != size:
+        raise CaMMaError("fixed bytes length mismatch")
+    return b.ljust(32, b"\x00")
+
+
+def _abi_encode_bytes_dynamic(b: bytes) -> bytes:
+    return _int_to_abi(len(b), 256, False) + _zpad_to_32(b)
+
+
+def _abi_encode_string(s: str) -> bytes:
+    return _abi_encode_bytes_dynamic(s.encode("utf-8"))
+
+
+def _is_dynamic_type(typ: str) -> bool:
+    if typ in ("bytes", "string"):
+        return True
+    if typ.endswith("]"):
+        # dynamic arrays are dynamic; fixed arrays can be dynamic if element type is dynamic
+        m = re.fullmatch(r"(.+)\[(\d*)\]", typ)
+        if not m:
+            raise CaMMaError(f"bad array type: {typ}")
+        inner = m.group(1)
+        n = m.group(2)
+        if n == "":
+            return True
+        return _is_dynamic_type(inner)
+    if typ.startswith("(") and typ.endswith(")"):
+        parts = split_tuple_types(typ[1:-1])
+        return any(_is_dynamic_type(p) for p in parts)
+    return False
+
+
+def split_tuple_types(s: str) -> list[str]:
+    # splits "address,(uint256,bytes32),bytes[]" into ["address","(uint256,bytes32)","bytes[]"]
+    out: list[str] = []
+    depth = 0
+    buf = []
+    for ch in s:
+        if ch == "," and depth == 0:
+            part = "".join(buf).strip()
+            if part:
+                out.append(part)
