@@ -421,3 +421,50 @@ def abi_encode_single(typ: str, val: t.Any) -> bytes:
         arr = list(val) if isinstance(val, (list, tuple)) else []
         if n != "":
             nn = int(n)
+            if len(arr) != nn:
+                raise CaMMaError("fixed array length mismatch")
+            return abi_encode_many([inner] * nn, arr)
+        # dynamic array
+        head = _int_to_abi(len(arr), 256, False)
+        if _is_dynamic_type(inner):
+            # offset table
+            offs: list[int] = []
+            tail_parts: list[bytes] = []
+            cur = 32 * len(arr)
+            for x in arr:
+                enc = abi_encode_single(inner, x)
+                offs.append(cur)
+                tail_parts.append(enc)
+                cur += len(enc)
+            head2 = b"".join(_int_to_abi(o, 256, False) for o in offs)
+            return head + head2 + b"".join(tail_parts)
+        return head + b"".join(abi_encode_single(inner, x) for x in arr)
+    if typ.startswith("(") and typ.endswith(")"):
+        parts = split_tuple_types(typ[1:-1])
+        if not isinstance(val, (list, tuple)) or len(val) != len(parts):
+            raise CaMMaError("tuple value mismatch")
+        return abi_encode_many(parts, list(val))
+    raise CaMMaError(f"unsupported type: {typ}")
+
+
+def abi_encode_many(types: list[str], values: list[t.Any]) -> bytes:
+    if len(types) != len(values):
+        raise CaMMaError("types/values length mismatch")
+    head_parts: list[bytes] = []
+    tail_parts: list[bytes] = []
+    dynamic_flags = [_is_dynamic_type(t0) for t0 in types]
+    head_size = 32 * len(types)
+    tail_offset = head_size
+
+    for typ, val, dyn in zip(types, values, dynamic_flags):
+        if dyn:
+            head_parts.append(_int_to_abi(tail_offset, 256, False))
+            enc = abi_encode_single(typ, val)
+            tail_parts.append(enc)
+            tail_offset += len(enc)
+        else:
+            head_parts.append(abi_encode_single(typ, val))
+    return b"".join(head_parts) + b"".join(tail_parts)
+
+
+def abi_encode(types: list[str], values: list[t.Any]) -> str:
