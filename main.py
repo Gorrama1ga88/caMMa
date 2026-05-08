@@ -1032,3 +1032,50 @@ def cmd_status(args: argparse.Namespace) -> int:
         f"python: {sys.version.split()[0]}",
         f"os: {platform.platform()}",
         f"err: {err}",
+    ]
+    print(box("caMMa status", lines))
+    return 0 if err is None else 2
+
+
+def cmd_selector(args: argparse.Namespace) -> int:
+    sel = function_selector(args.signature)
+    print(json_dumps({"signature": args.signature, "selector": sel}, pretty=True))
+    return 0
+
+
+def cmd_keccak(args: argparse.Namespace) -> int:
+    b = args.text.encode("utf-8")
+    print(json_dumps({"text": args.text, "keccak256": keccak256_hex(b)}, pretty=True))
+    return 0
+
+
+def cmd_checksum(args: argparse.Namespace) -> int:
+    out = to_checksum_address(args.address)
+    print(json_dumps({"input": args.address, "checksum": out}, pretty=True))
+    return 0
+
+
+def cmd_abi_encode(args: argparse.Namespace) -> int:
+    types = json.loads(args.types)
+    values = json.loads(args.values)
+    if not isinstance(types, list) or not isinstance(values, list):
+        raise CaMMaError("--types/--values must be JSON lists")
+    hx = abi_encode([str(x) for x in types], values)
+    print(json_dumps({"types": types, "values": values, "data": hx}, pretty=True))
+    return 0
+
+
+def cmd_logs(args: argparse.Namespace) -> int:
+    rpc = JsonRpcClient(args.rpc, timeout_s=args.timeout)
+    f = to_int_auto(args.from_block)
+    tblock = to_int_auto(args.to_block)
+    topics = json.loads(args.topics) if args.topics else None
+    logs = rpc.get_logs(f, tblock, address=args.address, topics=topics)
+    out = {"ok": True, "count": len(logs), "from": f, "to": tblock, "address": args.address, "topics": topics, "logs": logs}
+    print(json_dumps(out, pretty=True))
+    return 0
+
+
+def cmd_rpc(args: argparse.Namespace) -> int:
+    rpc = JsonRpcClient(args.rpc, timeout_s=args.timeout)
+    params = json.loads(args.params) if args.params else []
