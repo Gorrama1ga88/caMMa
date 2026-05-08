@@ -1079,3 +1079,50 @@ def cmd_logs(args: argparse.Namespace) -> int:
 def cmd_rpc(args: argparse.Namespace) -> int:
     rpc = JsonRpcClient(args.rpc, timeout_s=args.timeout)
     params = json.loads(args.params) if args.params else []
+    if not isinstance(params, list):
+        raise CaMMaError("--params must be JSON list")
+    r = rpc.call(args.method, params)
+    out = {"ok": r.ok, "status": r.status, "elapsedMs": r.elapsed_ms, "result": r.result, "error": r.error, "raw": r.raw}
+    print(json_dumps(out, pretty=True))
+    return 0 if r.ok else 2
+
+
+def cmd_balance(args: argparse.Namespace) -> int:
+    rpc = JsonRpcClient(args.rpc, timeout_s=args.timeout)
+    wei = rpc.get_balance(args.address, block=args.block)
+    eth = decimal.Decimal(wei) / decimal.Decimal(10**18)
+    out = {"address": normalize_address(args.address), "block": args.block, "wei": str(wei), "eth": str(eth)}
+    print(json_dumps(out, pretty=True))
+    return 0
+
+
+def cmd_codehash(args: argparse.Namespace) -> int:
+    rpc = JsonRpcClient(args.rpc, timeout_s=args.timeout)
+    code = rpc.get_code(args.address, block=args.block)
+    sha = hashlib.sha256(code).hexdigest()
+    out = {"address": normalize_address(args.address), "block": args.block, "codeBytes": len(code), "sha256": "0x" + sha}
+    print(json_dumps(out, pretty=True))
+    return 0
+
+
+def cmd_memo_add(args: argparse.Namespace) -> int:
+    st = JsonStore(args.store)
+    tags = [x.strip() for x in (args.tags or "").split(",") if x.strip()]
+    m = st.add_memo(args.title, args.body or "", tags)
+    print(json_dumps({"ok": True, "memo": dataclasses.asdict(m)}, pretty=True))
+    return 0
+
+
+def cmd_memo_list(args: argparse.Namespace) -> int:
+    st = JsonStore(args.store)
+    memos = [dataclasses.asdict(m) for m in st.list_memos()]
+    print(json_dumps({"ok": True, "count": len(memos), "memos": memos}, pretty=True))
+    return 0
+
+
+def cmd_memo_del(args: argparse.Namespace) -> int:
+    st = JsonStore(args.store)
+    ok = st.delete_memo(args.id)
+    print(json_dumps({"ok": ok}, pretty=True))
+    return 0 if ok else 2
+
