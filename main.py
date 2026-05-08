@@ -750,3 +750,50 @@ def build_execute_calldata(job_id: str, router_payload_hex: str) -> str:
     # VirtualMaximus90.execute(bytes32 jobId, bytes payload, uint96 feeAsked)
     # selector + abi.encode(jobId, payload, feeAsked)
     sel = function_selector("execute(bytes32,bytes,uint96)")
+    enc = abi_encode(["bytes32", "bytes", "uint96"], [bytes.fromhex(strip_0x(job_id)), bytes.fromhex(strip_0x(router_payload_hex)), 0])
+    return sel + strip_0x(enc)
+
+
+# =============================================================
+# Log helpers
+# =============================================================
+
+
+def topic0(signature: str) -> str:
+    # event signature like "Transfer(address,address,uint256)"
+    return keccak256_hex(signature.encode("utf-8"))
+
+
+def bytes32_hex(b: bytes) -> str:
+    if len(b) != 32:
+        raise CaMMaError("expected 32 bytes")
+    return "0x" + b.hex()
+
+
+def pack_u64be(x: int) -> bytes:
+    if x < 0 or x > (1 << 64) - 1:
+        raise CaMMaError("u64 out of range")
+    return struct.pack(">Q", x)
+
+
+# =============================================================
+# HTTP API (optional)
+# =============================================================
+
+
+@dataclasses.dataclass
+class ServerConfig:
+    host: str
+    port: int
+    rpc_url: str
+    store_path: str
+    allow_rpc_proxy: bool
+    max_body_bytes: int = 512 * 1024
+
+
+def _json_response(handler: http.server.BaseHTTPRequestHandler, status: int, obj: t.Any, headers: t.Optional[dict] = None) -> None:
+    data = json_dumps(obj, pretty=True).encode("utf-8")
+    handler.send_response(status)
+    handler.send_header("Content-Type", "application/json; charset=utf-8")
+    handler.send_header("Content-Length", str(len(data)))
+    handler.send_header("Cache-Control", "no-store")
