@@ -1220,3 +1220,50 @@ def build_parser() -> argparse.ArgumentParser:
     sp.set_defaults(func=cmd_status)
 
     sp = sub.add_parser("selector", help="compute function selector")
+    sp.add_argument("--signature", required=True)
+    sp.set_defaults(func=cmd_selector)
+
+    sp = sub.add_parser("keccak", help="keccak256 of utf-8 text")
+    sp.add_argument("--text", required=True)
+    sp.set_defaults(func=cmd_keccak)
+
+    sp = sub.add_parser("checksum", help="EIP-55 checksum address")
+    sp.add_argument("--address", required=True)
+    sp.set_defaults(func=cmd_checksum)
+
+    sp = sub.add_parser("abi-encode", help="ABI encode values")
+    sp.add_argument("--types", required=True, help="JSON list of types")
+    sp.add_argument("--values", required=True, help="JSON list of values")
+    sp.set_defaults(func=cmd_abi_encode)
+
+    sp = sub.add_parser("rpc", help="arbitrary JSON-RPC call")
+    sp.add_argument("--method", required=True)
+    sp.add_argument("--params", default="[]")
+    sp.set_defaults(func=cmd_rpc)
+
+    sp = sub.add_parser("balance", help="get ETH balance")
+    sp.add_argument("--address", required=True)
+    sp.add_argument("--block", default="latest")
+    sp.set_defaults(func=cmd_balance)
+
+    sp = sub.add_parser("codehash", help="get contract code sha256")
+    sp.add_argument("--address", required=True)
+    sp.add_argument("--block", default="latest")
+    sp.set_defaults(func=cmd_codehash)
+
+    sp = sub.add_parser("logs", help="scan logs for a range")
+    sp.add_argument("--from-block", required=True)
+    sp.add_argument("--to-block", required=True)
+    sp.add_argument("--address", default=None)
+    sp.add_argument("--topics", default=None)
+    sp.set_defaults(func=cmd_logs)
+
+    sp = sub.add_parser("memo-add", help="add a local memo")
+    sp.add_argument("--title", required=True)
+    sp.add_argument("--body", default="")
+    sp.add_argument("--tags", default="")
+    sp.set_defaults(func=cmd_memo_add)
+
+    sp = sub.add_parser("memo-list", help="list memos")
+    sp.set_defaults(func=cmd_memo_list)
+
