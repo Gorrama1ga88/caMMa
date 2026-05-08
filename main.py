@@ -1126,3 +1126,50 @@ def cmd_memo_del(args: argparse.Namespace) -> int:
     print(json_dumps({"ok": ok}, pretty=True))
     return 0 if ok else 2
 
+
+def cmd_vm90_preview(args: argparse.Namespace) -> int:
+    cfg = Vm90Config()
+    now_ts = int(time.time())
+    earliest, latest = vm90_window(now_ts, args.delay, args.ttl, cfg)
+    fee_paid = int(args.fee_paid)
+    out = {
+        "now": now_ts,
+        "earliest": earliest,
+        "latest": latest,
+        "cooldownSec": cfg.queue_cooldown_sec,
+        "feePaid": fee_paid,
+        "feeBps": cfg.fee_bps,
+        "protocolCut": vm90_protocol_cut(fee_paid, cfg.fee_bps),
+        "executorPayout": vm90_executor_payout(fee_paid, cfg.fee_bps),
+        "bounds": dataclasses.asdict(cfg),
+    }
+    print(json_dumps(out, pretty=True))
+    return 0
+
+
+def cmd_vm90_router_payload(args: argparse.Namespace) -> int:
+    cfg = Vm90Config()
+    hops_obj = json.loads(args.hops_json)
+    if not isinstance(hops_obj, list) or not hops_obj:
+        raise CaMMaError("--hops-json must be a non-empty JSON list")
+    hops: list[RouterHop] = []
+    for i, x in enumerate(hops_obj):
+        if not isinstance(x, dict):
+            raise CaMMaError(f"hop {i} must be object")
+        to = str(x.get("to", "")).strip()
+        gas = int(x.get("gas", 0))
+        data = str(x.get("data", "")).strip()
+        hops.append(RouterHop(to=to, gas_stipend=gas, data_hex=data))
+    payload_hex = build_router_payload(args.job_id, hops, cfg)
+    out = {"jobId": args.job_id, "hopCount": len(hops), "payload": payload_hex}
+    print(json_dumps(out, pretty=True))
+    return 0
+
+
+def cmd_vm90_execute_calldata(args: argparse.Namespace) -> int:
+    cd = build_execute_calldata(args.job_id, args.router_payload)
+    out = {"jobId": args.job_id, "calldata": cd, "selector": function_selector("execute(bytes32,bytes,uint96)")}
+    print(json_dumps(out, pretty=True))
+    return 0
+
+
