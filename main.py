@@ -1267,3 +1267,48 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("memo-list", help="list memos")
     sp.set_defaults(func=cmd_memo_list)
 
+    sp = sub.add_parser("memo-del", help="delete memo by id")
+    sp.add_argument("--id", required=True)
+    sp.set_defaults(func=cmd_memo_del)
+
+    sp = sub.add_parser("vm90-preview", help="preview VirtualMaximus90 windows and fee math")
+    sp.add_argument("--delay", type=int, required=True)
+    sp.add_argument("--ttl", type=int, required=True)
+    sp.add_argument("--fee-paid", type=int, default=0)
+    sp.set_defaults(func=cmd_vm90_preview)
+
+    sp = sub.add_parser("vm90-router-payload", help="build VM90_ClawRouter payload from hops JSON")
+    sp.add_argument("--job-id", required=True)
+    sp.add_argument("--hops-json", required=True)
+    sp.set_defaults(func=cmd_vm90_router_payload)
+
+    sp = sub.add_parser("vm90-execute-calldata", help="build VirtualMaximus90.execute calldata (feeAsked=0)")
+    sp.add_argument("--job-id", required=True)
+    sp.add_argument("--router-payload", required=True)
+    sp.set_defaults(func=cmd_vm90_execute_calldata)
+
+    sp = sub.add_parser("serve", help="run local HTTP API")
+    sp.add_argument("--host", default="127.0.0.1")
+    sp.add_argument("--port", type=int, default=int(os.environ.get("CAMMA_PORT", "8989")))
+    sp.add_argument("--allow-rpc-proxy", action="store_true")
+    sp.add_argument("--max-body-bytes", type=int, default=512 * 1024)
+    sp.set_defaults(func=cmd_serve)
+
+    return p
+
+
+def main(argv: list[str]) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    try:
+        return int(args.func(args))
+    except CaMMaError as e:
+        sys.stderr.write(f"[caMMa] error: {e}\n")
+        return 2
+    except KeyboardInterrupt:
+        sys.stderr.write("\n[caMMa] interrupted\n")
+        return 130
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))
