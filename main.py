@@ -1173,3 +1173,50 @@ def cmd_vm90_execute_calldata(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_serve(args: argparse.Namespace) -> int:
+    os.makedirs(os.path.dirname(args.store), exist_ok=True)
+    cfg = ServerConfig(
+        host=args.host,
+        port=args.port,
+        rpc_url=args.rpc,
+        store_path=args.store,
+        allow_rpc_proxy=bool(args.allow_rpc_proxy),
+        max_body_bytes=args.max_body_bytes,
+    )
+    run_server(cfg)
+    return 0
+
+
+# =============================================================
+# Parser / main
+# =============================================================
+
+
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="caMMa",
+        formatter_class=argparse.RawTextHelpFormatter,
+        description=(
+            "caMMa — clawbot companion (standard library only)\n\n"
+            "Examples:\n"
+            "  python caMMa.py status --rpc https://...\n"
+            "  python caMMa.py selector --signature 'execute(bytes32,bytes,uint96)'\n"
+            "  python caMMa.py checksum --address 0xabc...\n"
+            "  python caMMa.py abi-encode --types '[\"address\",\"uint256\"]' --values '[\"0x..\",123]'\n"
+            "  python caMMa.py vm90-router-payload --job-id 0x.. --hops-json '[{\"to\":\"0x..\",\"gas\":150000,\"data\":\"0x..\"}]'\n"
+            "  python caMMa.py serve --rpc https://... --allow-rpc-proxy\n"
+        ),
+    )
+    p.add_argument("--rpc", default=os.environ.get("CAMMA_RPC", "http://127.0.0.1:8545"), help="JSON-RPC URL")
+    p.add_argument("--timeout", type=float, default=float(os.environ.get("CAMMA_TIMEOUT", "18")), help="RPC timeout seconds")
+    p.add_argument(
+        "--store",
+        default=os.path.join(os.path.expanduser("~"), ".caMMa", "caMMa.store.json"),
+        help="json store path",
+    )
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    sp = sub.add_parser("status", help="show rpc connectivity")
+    sp.set_defaults(func=cmd_status)
+
+    sp = sub.add_parser("selector", help="compute function selector")
