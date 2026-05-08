@@ -985,3 +985,50 @@ def run_server(cfg: ServerConfig) -> None:
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
+        print("\n[caMMa] shutdown requested")
+    finally:
+        httpd.server_close()
+
+
+# =============================================================
+# CLI commands
+# =============================================================
+
+
+def box(title: str, lines: list[str]) -> str:
+    w = max([len(title) + 4] + [len(x) for x in lines] + [30])
+    w = clamp_int(w, 34, 116)
+    top = "┌" + "─" * (w - 2) + "┐"
+    mid = "│ " + title.ljust(w - 4) + " │"
+    sep = "├" + "─" * (w - 2) + "┤"
+    body = []
+    for ln in lines:
+        for chunk in textwrap.wrap(ln, width=w - 4) or [""]:
+            body.append("│ " + chunk.ljust(w - 4) + " │")
+    bot = "└" + "─" * (w - 2) + "┘"
+    return "\n".join([top, mid, sep, *body, bot])
+
+
+def cmd_status(args: argparse.Namespace) -> int:
+    rpc = JsonRpcClient(args.rpc, timeout_s=args.timeout)
+    jitter_ms(140)
+    err = None
+    chain_id = None
+    block = None
+    gas = None
+    try:
+        chain_id = rpc.chain_id()
+        block = rpc.block_number()
+        gas = rpc.gas_price()
+    except Exception as e:
+        err = str(e)
+    lines = [
+        f"time: {iso_utc()}",
+        f"rpc: {args.rpc}",
+        f"ok: {err is None}",
+        f"chainId: {chain_id}",
+        f"blockNumber: {block}",
+        f"gasPriceWei: {gas}",
+        f"python: {sys.version.split()[0]}",
+        f"os: {platform.platform()}",
+        f"err: {err}",
