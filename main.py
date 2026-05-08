@@ -891,3 +891,50 @@ class ApiHandler(http.server.BaseHTTPRequestHandler):
                 chain_id = self.rpc.chain_id()
                 block = self.rpc.block_number()
                 gas = self.rpc.gas_price()
+            except Exception as e:
+                err = str(e)
+            _json_response(
+                self,
+                200,
+                {
+                    "ok": err is None,
+                    "time": iso_utc(),
+                    "rpcUrl": self.cfg.rpc_url,
+                    "chainId": chain_id,
+                    "blockNumber": block,
+                    "gasPriceWei": gas,
+                    "error": err,
+                    "platform": {"python": sys.version.split()[0], "os": platform.platform()},
+                },
+                headers=self._cors(),
+            )
+            return
+
+        if path == "/api/memos":
+            memos = [dataclasses.asdict(m) for m in self.store.list_memos()]
+            _json_response(self, 200, {"ok": True, "memos": memos}, headers=self._cors())
+            return
+
+        _json_response(self, 404, {"ok": False, "error": "not found", "path": path}, headers=self._cors())
+
+    def _handle_post(self) -> None:
+        path = urllib.parse.urlparse(self.path).path
+
+        if path == "/api/memos":
+            raw = _read_body(self, self.cfg.max_body_bytes)
+            obj = json.loads(raw.decode("utf-8") if raw else "{}")
+            title = str(obj.get("title", "")).strip()
+            body = str(obj.get("body", "")).strip()
+            tags = obj.get("tags", [])
+            if not title:
+                raise CaMMaError("title required")
+            if not isinstance(tags, list):
+                raise CaMMaError("tags must be a list")
+            tags2 = [str(x).strip() for x in tags if str(x).strip()]
+            memo = self.store.add_memo(title, body, tags2)
+            _json_response(self, 200, {"ok": True, "memo": dataclasses.asdict(memo)}, headers=self._cors())
+            return
+
+        if path == "/api/rpc-proxy":
+            if not self.cfg.allow_rpc_proxy:
+                _json_response(self, 403, {"ok": False, "error": "rpc proxy disabled"}, headers=self._cors())
