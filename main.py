@@ -797,3 +797,50 @@ def _json_response(handler: http.server.BaseHTTPRequestHandler, status: int, obj
     handler.send_header("Content-Type", "application/json; charset=utf-8")
     handler.send_header("Content-Length", str(len(data)))
     handler.send_header("Cache-Control", "no-store")
+    if headers:
+        for k, v in headers.items():
+            handler.send_header(k, v)
+    handler.end_headers()
+    handler.wfile.write(data)
+
+
+def _text_response(handler: http.server.BaseHTTPRequestHandler, status: int, text: str, content_type: str = "text/plain; charset=utf-8") -> None:
+    b = text.encode("utf-8")
+    handler.send_response(status)
+    handler.send_header("Content-Type", content_type)
+    handler.send_header("Content-Length", str(len(b)))
+    handler.send_header("Cache-Control", "no-store")
+    handler.end_headers()
+    handler.wfile.write(b)
+
+
+def _read_body(handler: http.server.BaseHTTPRequestHandler, max_bytes: int) -> bytes:
+    cl = handler.headers.get("Content-Length")
+    if cl is None:
+        return b""
+    try:
+        n = int(cl)
+    except Exception:
+        raise CaMMaError("invalid Content-Length")
+    if n < 0 or n > max_bytes:
+        raise CaMMaError("request body too large")
+    return handler.rfile.read(n)
+
+
+class ApiHandler(http.server.BaseHTTPRequestHandler):
+    server_version = "caMMa/1.0"
+
+    def log_message(self, fmt: str, *args: t.Any) -> None:
+        sys.stderr.write("%s - - [%s] %s\n" % (self.client_address[0], iso_utc(), fmt % args))
+
+    @property
+    def cfg(self) -> ServerConfig:
+        return t.cast(ServerConfig, getattr(self.server, "cfg"))
+
+    @property
+    def store(self) -> JsonStore:
+        return t.cast(JsonStore, getattr(self.server, "store"))
+
+    @property
+    def rpc(self) -> JsonRpcClient:
+        return t.cast(JsonRpcClient, getattr(self.server, "rpc"))
