@@ -844,3 +844,50 @@ class ApiHandler(http.server.BaseHTTPRequestHandler):
     @property
     def rpc(self) -> JsonRpcClient:
         return t.cast(JsonRpcClient, getattr(self.server, "rpc"))
+
+    def _cors(self) -> dict:
+        return {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type",
+        }
+
+    def do_OPTIONS(self) -> None:
+        self.send_response(204)
+        for k, v in self._cors().items():
+            self.send_header(k, v)
+        self.end_headers()
+
+    def do_GET(self) -> None:
+        try:
+            self._handle_get()
+        except Exception as e:
+            _json_response(self, 500, {"ok": False, "error": str(e), "trace": traceback.format_exc()}, headers=self._cors())
+
+    def do_POST(self) -> None:
+        try:
+            self._handle_post()
+        except Exception as e:
+            _json_response(self, 500, {"ok": False, "error": str(e), "trace": traceback.format_exc()}, headers=self._cors())
+
+    def do_DELETE(self) -> None:
+        try:
+            self._handle_delete()
+        except Exception as e:
+            _json_response(self, 500, {"ok": False, "error": str(e)}, headers=self._cors())
+
+    def _handle_get(self) -> None:
+        path = urllib.parse.urlparse(self.path).path
+        if path == "/":
+            _text_response(self, 200, "caMMa is running\n")
+            return
+
+        if path == "/api/status":
+            err = None
+            chain_id = None
+            block = None
+            gas = None
+            try:
+                chain_id = self.rpc.chain_id()
+                block = self.rpc.block_number()
+                gas = self.rpc.gas_price()
