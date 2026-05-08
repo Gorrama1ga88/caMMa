@@ -938,3 +938,50 @@ class ApiHandler(http.server.BaseHTTPRequestHandler):
         if path == "/api/rpc-proxy":
             if not self.cfg.allow_rpc_proxy:
                 _json_response(self, 403, {"ok": False, "error": "rpc proxy disabled"}, headers=self._cors())
+                return
+            raw = _read_body(self, self.cfg.max_body_bytes)
+            payload = json.loads(raw.decode("utf-8") if raw else "{}")
+            if not isinstance(payload, dict) or payload.get("jsonrpc") != "2.0":
+                raise CaMMaError("invalid jsonrpc payload")
+            method = payload.get("method")
+            params = payload.get("params")
+            if not isinstance(method, str) or not isinstance(params, list):
+                raise CaMMaError("invalid method/params")
+            resp = self.rpc.call(method, params)
+            if not resp.ok:
+                _json_response(self, 502, {"ok": False, "error": resp.error, "status": resp.status, "raw": resp.raw}, headers=self._cors())
+            else:
+                _json_response(self, 200, {"ok": True, "result": resp.result, "raw": resp.raw, "elapsedMs": resp.elapsed_ms}, headers=self._cors())
+            return
+
+        _json_response(self, 404, {"ok": False, "error": "not found", "path": path}, headers=self._cors())
+
+    def _handle_delete(self) -> None:
+        path = urllib.parse.urlparse(self.path).path
+        if path.startswith("/api/memos/"):
+            memo_id = path.split("/api/memos/", 1)[1]
+            ok = self.store.delete_memo(memo_id)
+            _json_response(self, 200, {"ok": ok}, headers=self._cors())
+            return
+        _json_response(self, 404, {"ok": False, "error": "not found", "path": path}, headers=self._cors())
+
+
+def run_server(cfg: ServerConfig) -> None:
+    rpc = JsonRpcClient(cfg.rpc_url, timeout_s=18.0)
+    store = JsonStore(cfg.store_path)
+
+    class _ThreadingHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
+        daemon_threads = True
+
+    httpd = _ThreadingHTTPServer((cfg.host, cfg.port), ApiHandler)
+    setattr(httpd, "cfg", cfg)
+    setattr(httpd, "rpc", rpc)
+    setattr(httpd, "store", store)
+
+    print(f"[caMMa] serving on http://{cfg.host}:{cfg.port}")
+    print(f"[caMMa] rpc: {cfg.rpc_url}")
+    print(f"[caMMa] rpcProxy: {cfg.allow_rpc_proxy}")
+    print(f"[caMMa] store: {cfg.store_path}")
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
