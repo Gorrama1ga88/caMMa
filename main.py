@@ -468,3 +468,50 @@ def abi_encode_many(types: list[str], values: list[t.Any]) -> bytes:
 
 
 def abi_encode(types: list[str], values: list[t.Any]) -> str:
+    return "0x" + abi_encode_many(types, values).hex()
+
+
+def function_selector(signature: str) -> str:
+    sig = signature.strip()
+    if "(" not in sig or not sig.endswith(")"):
+        raise CaMMaError("signature must look like name(type1,type2)")
+    return "0x" + keccak256(sig.encode("utf-8")).hex()[:8]
+
+
+# =============================================================
+# JSON-RPC client
+# =============================================================
+
+
+@dataclasses.dataclass(frozen=True)
+class RpcResponse:
+    ok: bool
+    status: int
+    elapsed_ms: int
+    result: t.Any = None
+    error: t.Optional[dict] = None
+    raw: t.Optional[dict] = None
+
+
+class JsonRpcClient:
+    def __init__(self, url: str, timeout_s: float = 18.0, headers: t.Optional[dict] = None):
+        self.url = self._normalize_url(url)
+        self.timeout_s = float(timeout_s)
+        self.headers = {"Content-Type": "application/json"}
+        if headers:
+            self.headers.update(headers)
+
+    @staticmethod
+    def _normalize_url(url: str) -> str:
+        u = (url or "").strip()
+        if not u:
+            raise CaMMaError("RPC url is empty")
+        if not re.match(r"^https?://", u, flags=re.I):
+            raise CaMMaError("RPC url must start with http:// or https://")
+        return u
+
+    def call(self, method: str, params: list) -> RpcResponse:
+        req_obj = {"jsonrpc": "2.0", "id": random.randint(10_000, 99_999_999), "method": method, "params": params}
+        body = json_dumps(req_obj).encode("utf-8")
+        req = urllib.request.Request(self.url, data=body, headers=self.headers, method="POST")
+        t0 = time.time()
