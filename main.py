@@ -703,3 +703,50 @@ def vm90_executor_payout(fee_paid: int, fee_bps: int) -> int:
 @dataclasses.dataclass(frozen=True)
 class RouterHop:
     to: str
+    gas_stipend: int
+    data_hex: str
+
+    def normalized(self) -> "RouterHop":
+        return RouterHop(
+            to=normalize_address(self.to),
+            gas_stipend=int(self.gas_stipend),
+            data_hex=add_0x(strip_0x(self.data_hex)),
+        )
+
+
+def build_router_payload(job_id: str, hops: list[RouterHop], cfg: Vm90Config) -> str:
+    # Solidity expects abi.encode(bytes32 jobId, Hop[] hops) where Hop = (address,uint32,bytes)
+    if not re.fullmatch(r"0x[0-9a-fA-F]{64}", job_id or ""):
+        raise CaMMaError("jobId must be 32-byte hex (0x...)")
+    if not hops:
+        raise CaMMaError("hops is empty")
+    if len(hops) > cfg.max_downstream_fanout:
+        raise CaMMaError(f"hops exceeds fanout cap {cfg.max_downstream_fanout}")
+
+    norm = [h.normalized() for h in hops]
+    for h in norm:
+        if not is_hex(h.data_hex):
+            raise CaMMaError("hop data must be hex")
+        if len(strip_0x(h.data_hex)) // 2 > cfg.max_downstream_calldata:
+            raise CaMMaError("hop calldata too large")
+        if h.gas_stipend < 0:
+            raise CaMMaError("gas stipend must be non-negative")
+
+    # Encode tuple array: (address,uint32,bytes)[]
+    # We'll represent uint32 as uint256 in ABI encoding since both map to 32-byte words.
+    hop_t = "(address,uint32,bytes)"
+    # Our encoder doesn't understand uint32 directly; encode it as uint256 then cast onchain.
+    # We keep the type string as uint256 for correctness of this local encoder.
+    hop_t_local = "(address,uint256,bytes)"
+    arr_types = [hop_t_local + "[]"]
+    arr_vals = [[(h.to, int(h.gas_stipend) & 0xFFFFFFFF, bytes.fromhex(strip_0x(h.data_hex))) for h in norm]]
+    # But we also need the initial bytes32 jobId
+    types = ["bytes32"] + arr_types
+    values: list[t.Any] = [bytes.fromhex(strip_0x(job_id))] + arr_vals
+    return abi_encode(types, values)
+
+
+def build_execute_calldata(job_id: str, router_payload_hex: str) -> str:
+    # VirtualMaximus90.execute(bytes32 jobId, bytes payload, uint96 feeAsked)
+    # selector + abi.encode(jobId, payload, feeAsked)
+    sel = function_selector("execute(bytes32,bytes,uint96)")
