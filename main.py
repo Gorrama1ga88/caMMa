@@ -515,3 +515,50 @@ class JsonRpcClient:
         body = json_dumps(req_obj).encode("utf-8")
         req = urllib.request.Request(self.url, data=body, headers=self.headers, method="POST")
         t0 = time.time()
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout_s) as resp:
+                data = resp.read()
+                elapsed = int((time.time() - t0) * 1000)
+                try:
+                    raw = json.loads(data.decode("utf-8"))
+                except Exception:
+                    return RpcResponse(ok=False, status=int(getattr(resp, "status", 0) or 0), elapsed_ms=elapsed, error={"message": "invalid json"})
+                if isinstance(raw, dict) and "error" in raw:
+                    return RpcResponse(ok=False, status=int(getattr(resp, "status", 0) or 0), elapsed_ms=elapsed, error=raw.get("error"), raw=raw)
+                return RpcResponse(ok=True, status=int(getattr(resp, "status", 0) or 0), elapsed_ms=elapsed, result=raw.get("result") if isinstance(raw, dict) else None, raw=raw)
+        except urllib.error.HTTPError as e:
+            elapsed = int((time.time() - t0) * 1000)
+            try:
+                raw = json.loads(e.read().decode("utf-8"))
+            except Exception:
+                raw = None
+            return RpcResponse(ok=False, status=int(getattr(e, "code", 0) or 0), elapsed_ms=elapsed, error={"message": str(e)}, raw=raw)
+        except Exception as e:
+            elapsed = int((time.time() - t0) * 1000)
+            return RpcResponse(ok=False, status=0, elapsed_ms=elapsed, error={"message": str(e)}, raw=None)
+
+    def chain_id(self) -> int:
+        r = self.call("eth_chainId", [])
+        if not r.ok or not isinstance(r.result, str) or not is_hex(r.result):
+            raise CaMMaError(f"eth_chainId failed: {r.error}")
+        return int(r.result, 16)
+
+    def block_number(self) -> int:
+        r = self.call("eth_blockNumber", [])
+        if not r.ok or not isinstance(r.result, str) or not is_hex(r.result):
+            raise CaMMaError(f"eth_blockNumber failed: {r.error}")
+        return int(r.result, 16)
+
+    def gas_price(self) -> int:
+        r = self.call("eth_gasPrice", [])
+        if not r.ok or not isinstance(r.result, str) or not is_hex(r.result):
+            raise CaMMaError(f"eth_gasPrice failed: {r.error}")
+        return int(r.result, 16)
+
+    def get_balance(self, addr: str, block: str = "latest") -> int:
+        a = normalize_address(addr)
+        r = self.call("eth_getBalance", [a, block])
+        if not r.ok or not isinstance(r.result, str) or not is_hex(r.result):
+            raise CaMMaError(f"eth_getBalance failed: {r.error}")
+        return int(r.result, 16)
+
