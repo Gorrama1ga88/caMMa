@@ -562,3 +562,50 @@ class JsonRpcClient:
             raise CaMMaError(f"eth_getBalance failed: {r.error}")
         return int(r.result, 16)
 
+    def get_code(self, addr: str, block: str = "latest") -> bytes:
+        a = normalize_address(addr)
+        r = self.call("eth_getCode", [a, block])
+        if not r.ok or not isinstance(r.result, str) or not is_hex(r.result):
+            raise CaMMaError(f"eth_getCode failed: {r.error}")
+        hx = strip_0x(r.result)
+        return b"" if hx == "" else bytes.fromhex(hx)
+
+    def eth_call(self, to: str, data_hex: str, block: str = "latest") -> str:
+        a = normalize_address(to)
+        if not is_hex(data_hex):
+            raise CaMMaError("data must be hex (0x...)")
+        r = self.call("eth_call", [{"to": a, "data": data_hex}, block])
+        if not r.ok or not isinstance(r.result, str) or not is_hex(r.result):
+            raise CaMMaError(f"eth_call failed: {r.error}")
+        return r.result
+
+    def get_logs(self, from_block: int, to_block: int, address: t.Optional[str] = None, topics: t.Optional[list] = None) -> list:
+        if from_block < 0 or to_block < 0:
+            raise CaMMaError("negative block range")
+        if to_block < from_block:
+            raise CaMMaError("to_block must be >= from_block")
+        flt: dict = {"fromBlock": to_hex_int(from_block), "toBlock": to_hex_int(to_block)}
+        if address:
+            flt["address"] = normalize_address(address)
+        if topics is not None:
+            flt["topics"] = topics
+        r = self.call("eth_getLogs", [flt])
+        if not r.ok or not isinstance(r.result, list):
+            raise CaMMaError(f"eth_getLogs failed: {r.error}")
+        return r.result
+
+
+# =============================================================
+# Local tiny JSON store
+# =============================================================
+
+
+@dataclasses.dataclass
+class Memo:
+    id: str
+    created_at: str
+    title: str
+    body: str
+    tags: list[str]
+
+
