@@ -609,3 +609,50 @@ class Memo:
     tags: list[str]
 
 
+class JsonStore:
+    def __init__(self, path: str):
+        self.path = path
+        self._lock = threading.Lock()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        if not os.path.exists(path):
+            self._write({"memos": [], "meta": {"createdAt": iso_utc(), "schema": 1, "app": "caMMa"}})
+
+    def _read(self) -> dict:
+        with self._lock:
+            with open(self.path, "r", encoding="utf-8") as f:
+                return json.load(f)
+
+    def _write(self, obj: dict) -> None:
+        with self._lock:
+            tmp = self.path + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                f.write(json_dumps(obj, pretty=True))
+                f.write("\n")
+            os.replace(tmp, self.path)
+
+    def list_memos(self) -> list[Memo]:
+        data = self._read()
+        out: list[Memo] = []
+        for x in data.get("memos", []):
+            out.append(
+                Memo(
+                    id=str(x.get("id", "")),
+                    created_at=str(x.get("created_at", "")),
+                    title=str(x.get("title", "")),
+                    body=str(x.get("body", "")),
+                    tags=list(x.get("tags", [])) if isinstance(x.get("tags", []), list) else [],
+                )
+            )
+        return out
+
+    def add_memo(self, title: str, body: str, tags: list[str]) -> Memo:
+        m = Memo(id=short_id("memo"), created_at=iso_utc(), title=title, body=body, tags=tags)
+        data = self._read()
+        memos = data.get("memos", [])
+        memos.append(dataclasses.asdict(m))
+        data["memos"] = memos
+        self._write(data)
+        return m
+
+    def delete_memo(self, memo_id: str) -> bool:
+        data = self._read()
