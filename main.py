@@ -656,3 +656,50 @@ class JsonStore:
 
     def delete_memo(self, memo_id: str) -> bool:
         data = self._read()
+        memos = data.get("memos", [])
+        before = len(memos)
+        memos = [x for x in memos if str(x.get("id", "")) != memo_id]
+        data["memos"] = memos
+        self._write(data)
+        return len(memos) != before
+
+
+# =============================================================
+# Job payload builder for VirtualMaximus90 + VM90_ClawRouter
+# =============================================================
+
+
+@dataclasses.dataclass(frozen=True)
+class Vm90Config:
+    fee_bps: int = 37
+    max_jobs_per_batch: int = 41
+    min_delay_sec: int = 45
+    max_delay_sec: int = 12 * 60 * 60
+    max_job_calldata: int = 8192
+    max_downstream_calldata: int = 6144
+    max_downstream_fanout: int = 7
+    max_gas_stipend: int = 2_900_000
+    queue_cooldown_sec: int = 19
+
+
+def vm90_window(now_ts: int, delay_sec: int, ttl_sec: int, cfg: Vm90Config) -> tuple[int, int]:
+    d = clamp_int(delay_sec, cfg.min_delay_sec, cfg.max_delay_sec)
+    ttl = clamp_int(ttl_sec, 60, 60 * 24 * 60 * 60)
+    earliest = now_ts + d
+    latest = now_ts + d + ttl
+    if earliest >= latest:
+        raise CaMMaError("invalid time window")
+    return earliest, latest
+
+
+def vm90_protocol_cut(fee_paid: int, fee_bps: int) -> int:
+    return (fee_paid * fee_bps) // 10_000
+
+
+def vm90_executor_payout(fee_paid: int, fee_bps: int) -> int:
+    return fee_paid - vm90_protocol_cut(fee_paid, fee_bps)
+
+
+@dataclasses.dataclass(frozen=True)
+class RouterHop:
+    to: str
